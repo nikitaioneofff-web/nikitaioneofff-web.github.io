@@ -77,7 +77,7 @@
             padding: 15px;
             border-radius: 8px;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 16px;
             line-height: 1.2;
             white-space: pre;
             overflow-x: auto;
@@ -113,6 +113,7 @@
 <body>
     <div class="box">
         <h2>🎨 Braille Art</h2>
+        <p style="text-align: center; color: #666; margin-top: -10px;">тёмное → ⣿, светлое → ⠀</p>
         
         <div class="upload" id="upload">
             📸 Нажми, чтобы выбрать фото
@@ -128,7 +129,7 @@
         <div id="resultBlock" class="hidden">
             <div class="result" id="result"></div>
             <button class="copy" id="copy">📋 Копировать</button>
-            <div class="note">✓ Оптимально для Telegram</div>
+            <div class="note">✓ Для Telegram (22 символа)</div>
         </div>
     </div>
 
@@ -216,14 +217,14 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // ✅ ШИРИНА: 22 символа (идеально для телефона)
+                // Ширина 22 символа (для телефона)
                 const width = 22;
                 const height = Math.floor(width * (img.height / img.width) * 0.5);
                 
                 canvas.width = width * 2;
                 canvas.height = height * 4;
                 
-                // Включаем сглаживание
+                // Сглаживание
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 
@@ -232,59 +233,48 @@
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
                 
-                // Получаем яркость
+                // Получаем яркость (0 = чёрный, 255 = белый)
                 const gray = [];
                 for (let i = 0; i < data.length; i += 4) {
                     const g = (data[i] + data[i+1] + data[i+2]) / 3;
                     gray.push(g);
                 }
                 
-                // Нормализация с автоподбором контраста
+                // Нормализация
                 const min = Math.min(...gray);
                 const max = Math.max(...gray);
                 const range = max - min;
                 
-                // Избегаем деления на ноль
                 if (range > 0) {
                     for (let i = 0; i < gray.length; i++) {
-                        // Растягиваем на весь диапазон 0-255
                         gray[i] = ((gray[i] - min) / range) * 255;
                     }
                 }
                 
-                // ✅ ПЛАВНЫЙ ПОРОГ: используем несколько уровней
+                // Порог яркости (можно менять)
+                // Чем меньше число, тем темнее картинка
+                const threshold = 140;
+                
                 let braille = '';
                 
                 for (let y = 0; y < canvas.height; y += 4) {
                     for (let x = 0; x < canvas.width; x += 2) {
-                        let code = 0x2800;
+                        let code = 0x2800; // Пустой символ (все точки выключены)
                         
                         const dots = [
                             [0,0], [1,0], [2,0], [0,1],
                             [1,1], [2,1], [3,0], [3,1]
                         ];
                         
-                        // Собираем яркость 8 пикселей
-                        const pixels = [];
                         for (let i = 0; i < 8; i++) {
                             const py = y + dots[i][0];
                             const px = x + dots[i][1];
                             
                             if (py < canvas.height && px < canvas.width) {
-                                pixels.push(gray[py * canvas.width + px]);
-                            } else {
-                                pixels.push(255); // Белый за границами
-                            }
-                        }
-                        
-                        // Средняя яркость блока
-                        const avg = pixels.reduce((a, b) => a + b, 0) / 8;
-                        
-                        // Динамический порог (чем выше avg, тем больше точек)
-                        for (let i = 0; i < 8; i++) {
-                            // Каждая точка сравнивается со средним по блоку
-                            if (pixels[i] < avg * 0.9) { // Немного темнее среднего
-                                code |= (1 << i);
+                                // ✅ ТЁМНЫЙ пиксель (меньше порога) = включаем точку
+                                if (gray[py * canvas.width + px] < threshold) {
+                                    code |= (1 << i);
+                                }
                             }
                         }
                         
@@ -308,7 +298,7 @@
             navigator.clipboard.writeText(result.textContent).then(() => {
                 alert('✅ Скопировано! Теперь вставь в Telegram');
             }).catch(() => {
-                alert('❌ Не удалось скопировать. Выдели текст вручную и нажми Ctrl+C');
+                alert('❌ Не удалось скопировать. Выдели текст и нажми Ctrl+C');
             });
         };
     </script>
