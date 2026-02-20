@@ -1,156 +1,225 @@
-<script>
-const fileInput = document.getElementById('fileInput');
-const uploadArea = document.getElementById('uploadArea');
-const preview = document.getElementById('preview');
-const previewImage = document.getElementById('previewImage');
-const convertBtn = document.getElementById('convertBtn');
-const loader = document.getElementById('loader');
-const resultContainer = document.getElementById('resultContainer');
-const result = document.getElementById('result');
-const copyBtn = document.getElementById('copyBtn');
-
-let currentFile = null;
-
-uploadArea.addEventListener('click', () => fileInput.click());
-
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        currentFile = file;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            previewImage.src = e.target.result;
-            preview.style.display = 'block';
-            resultContainer.style.display = 'none';
-        };
-        reader.readAsDataURL(file);
-    }
-});
-
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.style.borderColor = '#0088cc';
-});
-
-uploadArea.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    uploadArea.style.borderColor = '#ccc';
-});
-
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.style.borderColor = '#ccc';
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-        currentFile = file;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            previewImage.src = e.target.result;
-            preview.style.display = 'block';
-            resultContainer.style.display = 'none';
-        };
-        reader.readAsDataURL(file);
-    }
-});
-
-convertBtn.addEventListener('click', async () => {
-    if (!currentFile) {
-        alert('Выберите фото');
-        return;
-    }
-
-    convertBtn.disabled = true;
-    loader.style.display = 'block';
-    resultContainer.style.display = 'none';
-
-    try {
-        const img = new Image();
-        const reader = new FileReader();
-        
-        await new Promise((resolve) => {
-            reader.onload = (e) => {
-                img.onload = resolve;
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(currentFile);
-        });
-
-        // РАЗМЕР: 60 символов в ширину
-        const charWidth = 60;
-        const charHeight = Math.floor(charWidth * (img.height / img.width) * 0.5);
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        canvas.width = charWidth * 2;
-        canvas.height = charHeight * 4;
-        
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // Получаем яркость (0-255)
-        const brightness = [];
-        for (let i = 0; i < data.length; i += 4) {
-            const b = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-            brightness.push(b);
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Braille Art</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
+        .box {
+            max-width: 500px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            margin: 0 0 20px 0;
+        }
+        .upload {
+            border: 2px dashed #ccc;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .upload:hover {
+            border-color: #0088cc;
+            background: #f0f8ff;
+        }
+        .preview {
+            display: none;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .preview img {
+            max-width: 100%;
+            max-height: 150px;
+        }
+        .btn {
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .btn:hover {
+            background: #006699;
+        }
+        .result {
+            background: #1a1a1a;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 10px;
+            line-height: 1.2;
+            white-space: pre;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        .copy {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px;
+            width: 100%;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>🎨 Braille Art</h2>
         
-        // Нормализуем яркость (растягиваем диапазон)
-        const min = Math.min(...brightness);
-        const max = Math.max(...brightness);
-        const range = max - min;
+        <div class="upload" id="upload">
+            📸 Нажми, чтобы выбрать фото
+            <input type="file" id="file" accept="image/*" style="display: none">
+        </div>
         
-        const normalized = brightness.map(b => 
-            range > 0 ? ((b - min) / range * 255) : 128
-        );
+        <div class="preview" id="preview">
+            <img id="imgPreview" src="">
+        </div>
         
-        // Более высокий порог для светлых участков
-        const threshold = 160;
+        <button class="btn" id="convert">Конвертировать</button>
         
-        // Создаём символы Брайля с градиентом
-        let braille = '';
-        for (let y = 0; y < canvas.height; y += 4) {
-            for (let x = 0; x < canvas.width; x += 2) {
-                let code = 0x2800;
+        <div id="resultBlock" class="hidden">
+            <div class="result" id="result"></div>
+            <button class="copy" id="copy">Копировать</button>
+        </div>
+    </div>
+
+    <script>
+        const upload = document.getElementById('upload');
+        const fileInput = document.getElementById('file');
+        const preview = document.getElementById('preview');
+        const imgPreview = document.getElementById('imgPreview');
+        const convertBtn = document.getElementById('convert');
+        const resultBlock = document.getElementById('resultBlock');
+        const result = document.getElementById('result');
+        const copyBtn = document.getElementById('copy');
+        
+        let currentFile = null;
+
+        upload.onclick = () => fileInput.click();
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                currentFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imgPreview.src = e.target.result;
+                    preview.style.display = 'block';
+                    resultBlock.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        convertBtn.onclick = async () => {
+            if (!currentFile) {
+                alert('Выберите фото');
+                return;
+            }
+
+            convertBtn.disabled = true;
+            convertBtn.textContent = 'Обработка...';
+
+            try {
+                const img = new Image();
+                const reader = new FileReader();
                 
-                const positions = [
-                    [0,0], [1,0], [2,0], [0,1],
-                    [1,1], [2,1], [3,0], [3,1]
-                ];
+                await new Promise((resolve) => {
+                    reader.onload = (e) => {
+                        img.onload = resolve;
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(currentFile);
+                });
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
                 
-                for (let i = 0; i < 8; i++) {
-                    const py = y + positions[i][0];
-                    const px = x + positions[i][1];
-                    
-                    if (py < canvas.height && px < canvas.width) {
-                        const b = normalized[py * canvas.width + px];
-                        if (b < threshold) {
-                            code |= (1 << i);
-                        }
-                    }
+                const width = 50;
+                const height = Math.floor(width * (img.height / img.width) * 0.5);
+                
+                canvas.width = width * 2;
+                canvas.height = height * 4;
+                
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                const gray = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    const g = (data[i] + data[i+1] + data[i+2]) / 3;
+                    gray.push(g);
                 }
                 
-                braille += String.fromCharCode(code);
+                let braille = '';
+                
+                for (let y = 0; y < canvas.height; y += 4) {
+                    for (let x = 0; x < canvas.width; x += 2) {
+                        let code = 0x2800;
+                        
+                        const dots = [
+                            [0,0], [1,0], [2,0], [0,1],
+                            [1,1], [2,1], [3,0], [3,1]
+                        ];
+                        
+                        for (let i = 0; i < 8; i++) {
+                            const py = y + dots[i][0];
+                            const px = x + dots[i][1];
+                            
+                            if (py < canvas.height && px < canvas.width) {
+                                if (gray[py * canvas.width + px] < 140) {
+                                    code |= (1 << i);
+                                }
+                            }
+                        }
+                        
+                        braille += String.fromCharCode(code);
+                    }
+                    braille += '\n';
+                }
+                
+                result.textContent = braille;
+                resultBlock.classList.remove('hidden');
+                
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
             }
-            braille += '\n';
-        }
-        
-        result.textContent = braille;
-        resultContainer.style.display = 'block';
-        
-    } catch (error) {
-        alert('Ошибка: ' + error.message);
-    } finally {
-        convertBtn.disabled = false;
-        loader.style.display = 'none';
-    }
-});
+            
+            convertBtn.disabled = false;
+            convertBtn.textContent = 'Конвертировать';
+        };
 
-copyBtn.addEventListener('click', () => {
-    navigator.clipboard.writeText(result.textContent).then(() => {
-        alert('Скопировано!');
-    });
-});
-</script>
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(result.textContent).then(() => {
+                alert('Скопировано!');
+            });
+        };
+    </script>
+</body>
+</html>
