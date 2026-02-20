@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Braille Art</title>
+    <title>Braille Art Converter</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -25,6 +25,7 @@
         h2 {
             text-align: center;
             margin: 0 0 20px 0;
+            color: #1a1a1a;
         }
         .upload {
             border: 2px dashed #ccc;
@@ -33,6 +34,8 @@
             border-radius: 10px;
             cursor: pointer;
             margin-bottom: 15px;
+            background: #fafafa;
+            transition: all 0.3s;
         }
         .upload:hover {
             border-color: #0088cc;
@@ -46,6 +49,7 @@
         .preview img {
             max-width: 100%;
             max-height: 150px;
+            border-radius: 8px;
         }
         .btn {
             background: #0088cc;
@@ -55,23 +59,30 @@
             width: 100%;
             border-radius: 25px;
             font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
             margin: 10px 0;
+            transition: background 0.3s;
         }
         .btn:hover {
             background: #006699;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .result {
             background: #1a1a1a;
             color: white;
             padding: 15px;
             border-radius: 8px;
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
             font-size: 10px;
             line-height: 1.2;
             white-space: pre;
             overflow-x: auto;
             margin: 15px 0;
+            border: 1px solid #333;
         }
         .copy {
             background: #28a745;
@@ -80,16 +91,27 @@
             padding: 10px;
             width: 100%;
             border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
             cursor: pointer;
+            transition: background 0.3s;
+        }
+        .copy:hover {
+            background: #218838;
         }
         .hidden {
             display: none;
+        }
+        .loader {
+            text-align: center;
+            color: #666;
+            margin: 10px 0;
         }
     </style>
 </head>
 <body>
     <div class="box">
-        <h2>🎨 Braille Art</h2>
+        <h2>🎨 Braille Art Converter</h2>
         
         <div class="upload" id="upload">
             📸 Нажми, чтобы выбрать фото
@@ -104,7 +126,7 @@
         
         <div id="resultBlock" class="hidden">
             <div class="result" id="result"></div>
-            <button class="copy" id="copy">Копировать</button>
+            <button class="copy" id="copy">📋 Копировать результат</button>
         </div>
     </div>
 
@@ -120,8 +142,10 @@
         
         let currentFile = null;
 
+        // Клик по области загрузки
         upload.onclick = () => fileInput.click();
 
+        // Выбор файла
         fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -136,14 +160,48 @@
             }
         };
 
+        // Drag and drop
+        upload.ondragover = (e) => {
+            e.preventDefault();
+            upload.style.borderColor = '#0088cc';
+            upload.style.background = '#f0f8ff';
+        };
+
+        upload.ondragleave = (e) => {
+            e.preventDefault();
+            upload.style.borderColor = '#ccc';
+            upload.style.background = '#fafafa';
+        };
+
+        upload.ondrop = (e) => {
+            e.preventDefault();
+            upload.style.borderColor = '#ccc';
+            upload.style.background = '#fafafa';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                currentFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imgPreview.src = e.target.result;
+                    preview.style.display = 'block';
+                    resultBlock.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                alert('Пожалуйста, выберите изображение');
+            }
+        };
+
+        // Конвертация
         convertBtn.onclick = async () => {
             if (!currentFile) {
-                alert('Выберите фото');
+                alert('Сначала выберите фото');
                 return;
             }
 
             convertBtn.disabled = true;
-            convertBtn.textContent = 'Обработка...';
+            convertBtn.textContent = '⏳ Обработка...';
 
             try {
                 const img = new Image();
@@ -157,21 +215,25 @@
                     reader.readAsDataURL(currentFile);
                 });
 
+                // Создаём canvas
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
+                // Размер: 55 символов в ширину
                 const width = 55;
                 const height = Math.floor(width * (img.height / img.width) * 0.5);
                 
                 canvas.width = width * 2;
                 canvas.height = height * 4;
                 
+                // Рисуем изображение
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
+                // Получаем пиксели
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
                 
-                // Получаем яркость
+                // Конвертируем в оттенки серого
                 const gray = [];
                 for (let i = 0; i < data.length; i += 4) {
                     const g = (data[i] + data[i+1] + data[i+2]) / 3;
@@ -186,24 +248,30 @@
                     gray[i] = ((gray[i] - min) / range) * 255;
                 }
                 
+                // Порог яркости (можно менять)
+                const threshold = 140;
+                
+                // Создаём символы Брайля
                 let braille = '';
-                const threshold = 180; // Выше = светлее
                 
                 for (let y = 0; y < canvas.height; y += 4) {
                     for (let x = 0; x < canvas.width; x += 2) {
-                        let code = 0x2800;
+                        let code = 0x2800; // Пустой символ
                         
+                        // Позиции 8 точек в символе Брайля
                         const dots = [
                             [0,0], [1,0], [2,0], [0,1],
                             [1,1], [2,1], [3,0], [3,1]
                         ];
                         
+                        // Проверяем каждую точку
                         for (let i = 0; i < 8; i++) {
                             const py = y + dots[i][0];
                             const px = x + dots[i][1];
                             
                             if (py < canvas.height && px < canvas.width) {
-                                if (gray[py * canvas.width + px] < threshold) {
+                                // СВЕТЛЫЕ пиксели дают точки (инвертировано)
+                                if (gray[py * canvas.width + px] > threshold) {
                                     code |= (1 << i);
                                 }
                             }
@@ -214,6 +282,7 @@
                     braille += '\n';
                 }
                 
+                // Показываем результат
                 result.textContent = braille;
                 resultBlock.classList.remove('hidden');
                 
@@ -225,9 +294,12 @@
             convertBtn.textContent = 'Конвертировать';
         };
 
+        // Копирование в буфер
         copyBtn.onclick = () => {
             navigator.clipboard.writeText(result.textContent).then(() => {
-                alert('Скопировано!');
+                alert('✅ Результат скопирован! Можно вставить в Telegram');
+            }).catch(() => {
+                alert('❌ Не удалось скопировать. Выделите текст вручную и нажмите Ctrl+C');
             });
         };
     </script>
